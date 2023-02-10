@@ -74,10 +74,10 @@ typedef struct vid_t vid_t;
 #define VID_J17  3
 
 /* AV source function prototypes */
-typedef uint32_t *(*vid_read_video_t)(void *private, float *ratio);
-typedef int16_t *(*vid_read_audio_t)(void *private, size_t *samples);
-typedef int (*vid_eof_t)(void *private);
-typedef int (*vid_close_t)(void *private);
+typedef uint32_t *(*vid_read_video_t)(void *av_private, float *ratio);
+typedef int16_t *(*vid_read_audio_t)(void *av_private, size_t *samples);
+typedef int (*vid_eof_t)(void *av_private);
+typedef int (*vid_close_t)(void *av_private);
 
 
 

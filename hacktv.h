@@ -42,13 +42,13 @@
 #define HACKTV_AUDIO_SAMPLE_RATE 32000
 
 /* AV source function prototypes */
-typedef uint32_t *(*hacktv_av_read_video_t)(void *private, float *ratio);
-typedef int16_t *(*hacktv_av_read_audio_t)(void *private, size_t *samples);
-typedef int (*hacktv_av_close_t)(void *private);
+typedef uint32_t *(*hacktv_av_read_video_t)(void *av_private, float *ratio);
+typedef int16_t *(*hacktv_av_read_audio_t)(void *av_private, size_t *samples);
+typedef int (*hacktv_av_close_t)(void *av_private);
 
 /* RF output function prototypes */
-typedef int (*hacktv_rf_write_t)(void *private, int16_t *iq_data, size_t samples);
-typedef int (*hacktv_rf_close_t)(void *private);
+typedef int (*hacktv_rf_write_t)(void *rf_private, int16_t *iq_data, size_t samples);
+typedef int (*hacktv_rf_close_t)(void *rf_private);
 
 /* Program state */
 typedef struct {

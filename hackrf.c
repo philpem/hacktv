@@ -204,9 +204,9 @@ static int _tx_callback(hackrf_transfer *transfer)
 	return(0);
 }
 
-static int _rf_write(void *private, int16_t *iq_data, size_t samples)
+static int _rf_write(void *rf_private, int16_t *iq_data, size_t samples)
 {
-	hackrf_t *rf = private;
+	hackrf_t *rf = rf_private;
 	int8_t iq8[1024 * 4];
 	int i, r;
 	
@@ -229,9 +229,9 @@ static int _rf_write(void *private, int16_t *iq_data, size_t samples)
 	return(HACKTV_OK);
 }
 
-static int _rf_close(void *private)
+static int _rf_close(void *rf_private)
 {
-	hackrf_t *rf = private;
+	hackrf_t *rf = rf_private;
 	int r;
 	
 	r = hackrf_stop_tx(rf->d);

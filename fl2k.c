@@ -69,9 +69,9 @@ static void _callback(fl2k_data_info_t *data_info)
 	data_info->b_buf = NULL;
 }
 
-static int _rf_write(void *private, int16_t *iq_data, size_t samples)
+static int _rf_write(void *rf_private, int16_t *iq_data, size_t samples)
 {
-	fl2k_t *rf = private;
+	fl2k_t *rf = rf_private;
 	int i;
 	
 	if(rf->abort)
@@ -101,9 +101,9 @@ static int _rf_write(void *private, int16_t *iq_data, size_t samples)
 	return(HACKTV_OK);
 }
 
-static int _rf_close(void *private)
+static int _rf_close(void *rf_private)
 {
-	fl2k_t *rf = private;
+	fl2k_t *rf = rf_private;
 	int r;
 	
 	rf->abort = 1;

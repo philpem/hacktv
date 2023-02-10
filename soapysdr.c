@@ -36,9 +36,9 @@ typedef struct {
 	
 } soapysdr_t;
 
-static int _rf_write(void *private, int16_t *iq_data, size_t samples)
+static int _rf_write(void *rf_private, int16_t *iq_data, size_t samples)
 {
-	soapysdr_t *rf = private;
+	soapysdr_t *rf = rf_private;
 	const void *buffs[1];
 	int flags = 0;
 	int l;
@@ -82,9 +82,9 @@ static int _rf_write(void *private, int16_t *iq_data, size_t samples)
 	return(HACKTV_OK);
 }
 
-static int _rf_close(void *private)
+static int _rf_close(void *rf_private)
 {
-	soapysdr_t *rf = private;
+	soapysdr_t *rf = rf_private;
 	
 	SoapySDRDevice_deactivateStream(rf->d, rf->s, 0, 0);
 	SoapySDRDevice_closeStream(rf->d, rf->s);

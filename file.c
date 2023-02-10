@@ -31,9 +31,9 @@ typedef struct {
 	int type;
 } rf_file_t;
 
-static int _rf_file_write_uint8_real(void *private, int16_t *iq_data, size_t samples)
+static int _rf_file_write_uint8_real(void *rf_private, int16_t *iq_data, size_t samples)
 {
-	rf_file_t *rf = private;
+	rf_file_t *rf = rf_private;
 	uint8_t *u8 = rf->data;
 	int i;
 	
@@ -52,9 +52,9 @@ static int _rf_file_write_uint8_real(void *private, int16_t *iq_data, size_t sam
 	return(HACKTV_OK);
 }
 
-static int _rf_file_write_int8_real(void *private, int16_t *iq_data, size_t samples)
+static int _rf_file_write_int8_real(void *rf_private, int16_t *iq_data, size_t samples)
 {
-	rf_file_t *rf = private;
+	rf_file_t *rf = rf_private;
 	int8_t *i8 = rf->data;
 	int i;
 	
@@ -73,9 +73,9 @@ static int _rf_file_write_int8_real(void *private, int16_t *iq_data, size_t samp
 	return(HACKTV_OK);
 }
 
-static int _rf_file_write_uint16_real(void *private, int16_t *iq_data, size_t samples)
+static int _rf_file_write_uint16_real(void *rf_private, int16_t *iq_data, size_t samples)
 {
-	rf_file_t *rf = private;
+	rf_file_t *rf = rf_private;
 	uint16_t *u16 = rf->data;
 	int i;
 	
@@ -94,9 +94,9 @@ static int _rf_file_write_uint16_real(void *private, int16_t *iq_data, size_t sa
 	return(HACKTV_OK);
 }
 
-static int _rf_file_write_int16_real(void *private, int16_t *iq_data, size_t samples)
+static int _rf_file_write_int16_real(void *rf_private, int16_t *iq_data, size_t samples)
 {
-	rf_file_t *rf = private;
+	rf_file_t *rf = rf_private;
 	int16_t *i16 = rf->data;
 	int i;
 	
@@ -115,9 +115,9 @@ static int _rf_file_write_int16_real(void *private, int16_t *iq_data, size_t sam
 	return(HACKTV_OK);
 }
 
-static int _rf_file_write_int32_real(void *private, int16_t *iq_data, size_t samples)
+static int _rf_file_write_int32_real(void *rf_private, int16_t *iq_data, size_t samples)
 {
-	rf_file_t *rf = private;
+	rf_file_t *rf = rf_private;
 	int32_t *i32 = rf->data;
 	int i;
 	
@@ -136,9 +136,9 @@ static int _rf_file_write_int32_real(void *private, int16_t *iq_data, size_t sam
 	return(HACKTV_OK);
 }
 
-static int _rf_file_write_float_real(void *private, int16_t *iq_data, size_t samples)
+static int _rf_file_write_float_real(void *rf_private, int16_t *iq_data, size_t samples)
 {
-	rf_file_t *rf = private;
+	rf_file_t *rf = rf_private;
 	float *f32 = rf->data;
 	int i;
 	
@@ -157,9 +157,9 @@ static int _rf_file_write_float_real(void *private, int16_t *iq_data, size_t sam
 	return(HACKTV_OK);
 }
 
-static int _rf_file_write_uint8_complex(void *private, int16_t *iq_data, size_t samples)
+static int _rf_file_write_uint8_complex(void *rf_private, int16_t *iq_data, size_t samples)
 {
-	rf_file_t *rf = private;
+	rf_file_t *rf = rf_private;
 	uint8_t *u8 = rf->data;
 	int i;
 	
@@ -179,9 +179,9 @@ static int _rf_file_write_uint8_complex(void *private, int16_t *iq_data, size_t 
 	return(HACKTV_OK);
 }
 
-static int _rf_file_write_int8_complex(void *private, int16_t *iq_data, size_t samples)
+static int _rf_file_write_int8_complex(void *rf_private, int16_t *iq_data, size_t samples)
 {
-	rf_file_t *rf = private;
+	rf_file_t *rf = rf_private;
 	int8_t *i8 = rf->data;
 	int i;
 	
@@ -201,9 +201,9 @@ static int _rf_file_write_int8_complex(void *private, int16_t *iq_data, size_t s
 	return(HACKTV_OK);
 }
 
-static int _rf_file_write_uint16_complex(void *private, int16_t *iq_data, size_t samples)
+static int _rf_file_write_uint16_complex(void *rf_private, int16_t *iq_data, size_t samples)
 {
-	rf_file_t *rf = private;
+	rf_file_t *rf = rf_private;
 	uint16_t *u16 = rf->data;
 	int i;
 	
@@ -223,18 +223,18 @@ static int _rf_file_write_uint16_complex(void *private, int16_t *iq_data, size_t
 	return(HACKTV_OK);
 }
 
-static int _rf_file_write_int16_complex(void *private, int16_t *iq_data, size_t samples)
+static int _rf_file_write_int16_complex(void *rf_private, int16_t *iq_data, size_t samples)
 {
-	rf_file_t *rf = private;
+	rf_file_t *rf = rf_private;
 	
 	fwrite(iq_data, sizeof(int16_t) * 2, samples, rf->f);
 	
 	return(HACKTV_OK);
 }
 
-static int _rf_file_write_int32_complex(void *private, int16_t *iq_data, size_t samples)
+static int _rf_file_write_int32_complex(void *rf_private, int16_t *iq_data, size_t samples)
 {
-	rf_file_t *rf = private;
+	rf_file_t *rf = rf_private;
 	int32_t *i32 = rf->data;
 	int i;
 	
@@ -254,9 +254,9 @@ static int _rf_file_write_int32_complex(void *private, int16_t *iq_data, size_t 
 	return(HACKTV_OK);
 }
 
-static int _rf_file_write_float_complex(void *private, int16_t *iq_data, size_t samples)
+static int _rf_file_write_float_complex(void *rf_private, int16_t *iq_data, size_t samples)
 {
-	rf_file_t *rf = private;
+	rf_file_t *rf = rf_private;
 	float *f32 = rf->data;
 	int i;
 	
@@ -276,9 +276,9 @@ static int _rf_file_write_float_complex(void *private, int16_t *iq_data, size_t 
 	return(HACKTV_OK);
 }
 
-static int _rf_file_close(void *private)
+static int _rf_file_close(void *rf_private)
 {
-	rf_file_t *rf = private;
+	rf_file_t *rf = rf_private;
 	
 	if(rf->f && rf->f != stdout) fclose(rf->f);
 	if(rf->data) free(rf->data);

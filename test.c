@@ -43,23 +43,23 @@ typedef struct {
 	size_t audio_samples;
 } av_test_t;
 
-static uint32_t *_av_test_read_video(void *private, float *ratio)
+static uint32_t *_av_test_read_video(void *av_private, float *ratio)
 {
-	av_test_t *av = private;
+	av_test_t *av = av_private;
 	if(ratio) *ratio = 4.0 / 3.0;
 	return(av->video);
 }
 
-static int16_t *_av_test_read_audio(void *private, size_t *samples)
+static int16_t *_av_test_read_audio(void *av_private, size_t *samples)
 {
-	av_test_t *av = private;
+	av_test_t *av = av_private;
 	*samples = av->audio_samples;
 	return(av->audio);
 }
 
-static int _av_test_close(void *private)
+static int _av_test_close(void *av_private)
 {
-	av_test_t *av = private;
+	av_test_t *av = av_private;
 	if(av->video) free(av->video);
 	if(av->audio) free(av->audio);
 	free(av);

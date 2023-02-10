@@ -607,9 +607,9 @@ static void *_video_scaler_thread(void *arg)
 	return(NULL);
 }
 
-static uint32_t *_av_ffmpeg_read_video(void *private, float *ratio)
+static uint32_t *_av_ffmpeg_read_video(void *av_private, float *ratio)
 {
-	av_ffmpeg_t *av = private;
+	av_ffmpeg_t *av = av_private;
 	AVFrame *frame;
 	
 	if(av->video_stream == NULL)
@@ -785,9 +785,9 @@ static void *_audio_scaler_thread(void *arg)
 	return(NULL);
 }
 
-static int16_t *_av_ffmpeg_read_audio(void *private, size_t *samples)
+static int16_t *_av_ffmpeg_read_audio(void *av_private, size_t *samples)
 {
-	av_ffmpeg_t *av = private;
+	av_ffmpeg_t *av = av_private;
 	AVFrame *frame;
 	
 	if(av->audio_stream == NULL)
@@ -808,9 +808,9 @@ static int16_t *_av_ffmpeg_read_audio(void *private, size_t *samples)
 	return((int16_t *) frame->data[0]);
 }
 
-static int _av_ffmpeg_eof(void *private)
+static int _av_ffmpeg_eof(void *av_private)
 {
-	av_ffmpeg_t *av = private;
+	av_ffmpeg_t *av = av_private;
 	
 	if((av->video_stream && !av->video_eof) ||
 	   (av->audio_stream && !av->audio_eof))
@@ -821,9 +821,9 @@ static int _av_ffmpeg_eof(void *private)
 	return(1);
 }
 
-static int _av_ffmpeg_close(void *private)
+static int _av_ffmpeg_close(void *av_private)
 {
-	av_ffmpeg_t *av = private;
+	av_ffmpeg_t *av = av_private;
 	
 	av->thread_abort = 1;
 	_packet_queue_abort(av, &av->video_queue);
