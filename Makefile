@@ -2,6 +2,7 @@
 CC      := $(CROSS_HOST)gcc
 PKGCONF := $(CROSS_HOST)pkg-config
 CFLAGS  := -g -Wall -pthread -O3 $(EXTRA_CFLAGS)
+CXXFLAGS := -g -Wall -pthread -O3 $(EXTRA_CXXFLAGS)
 LDFLAGS := -g -lm -pthread $(EXTRA_LDFLAGS)
 OBJS    := hacktv.o common.o fir.o vbidata.o teletext.o wss.o video.o mac.o dance.o eurocrypt.o videocrypt.o videocrypts.o syster.o acp.o vits.o vitc.o nicam728.o test.o ffmpeg.o file.o hackrf.o
 PKGS    := libavcodec libavformat libavdevice libswscale libswresample libavutil libhackrf $(EXTRA_PKGS)
@@ -20,17 +21,31 @@ ifeq ($(FL2K),fl2k)
 	CFLAGS += -DHAVE_FL2K
 endif
 
+ifneq ($(DTAPI_PATH),)
+	OBJS += dektec.o $(DTAPI_PATH)/DTAPI64.o
+	CFLAGS += -DHAVE_DEKTEC -I$(DTAPI_PATH)
+	LDFLAGS += -ldl
+endif
+
 CFLAGS  += $(shell $(PKGCONF) --cflags $(PKGS))
 LDFLAGS += $(shell $(PKGCONF) --libs $(PKGS))
 
 all: hacktv
 
 hacktv: $(OBJS)
+ifneq ($(DTAPI_PATH),)
+	$(CXX) -o hacktv $(OBJS) $(LDFLAGS)
+else
 	$(CC) -o hacktv $(OBJS) $(LDFLAGS)
+endif
 
 %.o: %.c Makefile
 	$(CC) $(CFLAGS) -c $< -o $@
 	@$(CC) $(CFLAGS) -MM $< -o $(@:.o=.d)
+
+%.o: %.cpp Makefile
+	$(CXX) $(CFLAGS) -c $< -o $@
+	@$(CXX) $(CFLAGS) -MM $< -o $(@:.o=.d)
 
 install:
 	cp -f hacktv $(PREFIX)/usr/local/bin/

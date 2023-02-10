@@ -26,6 +26,10 @@
 #include "file.h"
 #include "hackrf.h"
 
+#ifdef HAVE_DEKTEC
+#include "dektec.h"
+#endif
+
 #ifdef HAVE_SOAPYSDR
 #include "soapysdr.h"
 #endif
@@ -515,6 +519,16 @@ int main(int argc, char *argv[])
 			{
 				s.output_type = "hackrf";
 				s.output = sub;
+			}
+			else if(strcmp(pre, "dektec") == 0)
+			{
+#ifdef HAVE_DEKTEC
+				s.output_type = "dektec";
+				s.output = sub;
+#else
+				fprintf(stderr, "Dektec support is not available in this build of hacktv.\n");
+				return(-1);
+#endif
 			}
 			else if(strcmp(pre, "soapysdr") == 0)
 			{
@@ -1054,6 +1068,15 @@ int main(int argc, char *argv[])
 			return(-1);
 		}
 	}
+#ifdef HAVE_DEKTEC
+	else if(strcmp(s.output_type, "dektec") == 0)
+	{
+		if (rf_dektec_open(&s, s.output, s.frequency, s.gain)) {
+			vid_free(&s.vid);
+			return(-1);
+		}
+	}
+#endif
 #ifdef HAVE_SOAPYSDR
 	else if(strcmp(s.output_type, "soapysdr") == 0)
 	{
