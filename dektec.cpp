@@ -22,7 +22,8 @@
 #include "hacktv.h"
 #include "dektec.h"
 
-#define BUF_LEN 4096
+/* buffer length in bytes - must be a multiple of 4 */
+#define BUF_LEN (1024*1024)
 
 typedef struct {
 	
@@ -30,7 +31,8 @@ typedef struct {
 	DtDevice dtDev;
 	DtOutpChannel dtOutp;
 	
-	char txbuf[BUF_LEN * 2 * 2];
+	char txbuf[BUF_LEN];
+	size_t txbufWrPtr = 0;
 
 	uint64_t initialLoadTarget;
 	uint64_t fifoLoad = 0;
@@ -42,26 +44,54 @@ static int _rf_write(void *rf_private, int16_t *iq_data, size_t samples)
 {
 	dektec_t *rf = static_cast<dektec_t*>(rf_private);
 
-	size_t samps = samples;	
+	size_t samps = samples;
+	int16_t *iqp = iq_data;
+
 	while (samps > 0) {
-		// process IQ sample data until we fill the tx buffer
-		size_t n = (samps < BUF_LEN) ? samps : BUF_LEN;
+		// work out how many samples we can store in the buffer
+		size_t n = 
+			samps < ((BUF_LEN - rf->txbufWrPtr) / 4) ?
+				samps :
+				((BUF_LEN - rf->txbufWrPtr) / 4);
+
 		char *p = rf->txbuf;
-
+		int16_t iv,qv;
 		for (size_t i=0; i<n; i++) {
-			// process I sample
-			*(p++) = *iq_data >> 8;
-			*(p++) = *iq_data & 0xff;
-			iq_data++;
+			iv = *(iqp++);
+			qv = *(iqp++);
 
-			// process Q sample
-			*(p++) = *iq_data >> 8;
-			*(p++) = *iq_data & 0xff;
-			iq_data++;
+			iv /= 8;
+			qv /= 8;
+
+			// load samples into tx buffer
+			rf->txbuf[rf->txbufWrPtr++] = iv & 0xff;
+			rf->txbuf[rf->txbufWrPtr++] = iv >> 8;
+			rf->txbuf[rf->txbufWrPtr++] = qv & 0xff;
+			rf->txbuf[rf->txbufWrPtr++] = qv >> 8;
 		}
 
-		// transmit the buffer
-		rf->dtOutp.Write(rf->txbuf, n*4);
+		if (rf->txbufWrPtr == BUF_LEN) {
+			// check for FIFO underrun (if initial load complete)
+			if (rf->doneInitialLoad) {
+				int fifoLoad;
+				rf->dtOutp.GetFifoLoad(fifoLoad);
+				if (fifoLoad == 0) {
+					fprintf(stderr, "DECTEC TX: FIFO buffer underrun\n");
+				} else if (fifoLoad < (BUF_LEN/2)) {
+					fprintf(stderr, "DECTEC TX: FIFO buffer low! Only %d bytes in FIFO\n", fifoLoad);
+				}
+			}
+
+			// transmit the buffer
+			DTAPI_RESULT dr = rf->dtOutp.Write(rf->txbuf, rf->txbufWrPtr);
+			if (dr != DTAPI_OK)
+			{
+				fprintf(stderr, "DEKTEC TX: Write failed: %s\n", DtapiResult2Str(dr));
+				return(HACKTV_ERROR);
+			}
+
+			rf->txbufWrPtr = 0;
+		}
 
 		// update number of remaining samples
 		samps -= n;
@@ -70,13 +100,18 @@ static int _rf_write(void *rf_private, int16_t *iq_data, size_t samples)
 	// Check if initial FIFO load is complete
 	if (!rf->doneInitialLoad)
 	{
-		rf->fifoLoad += samples;
+		rf->fifoLoad += (samples*4);
 
 		if (rf->fifoLoad >= rf->initialLoadTarget)
 		{
 			fprintf(stderr, "DEKTEC TX: Initial fifo load complete, starting transmission\n");
 			// Start transmission
-			rf->dtOutp.SetTxControl(DTAPI_TXCTRL_SEND);
+			DTAPI_RESULT dr = rf->dtOutp.SetTxControl(DTAPI_TXCTRL_SEND);
+			if (dr != DTAPI_OK)
+			{
+				fprintf(stderr, "DEKTEC TX: SetTxControl failed: %s\n", DtapiResult2Str(dr));
+				return(HACKTV_ERROR);
+			}
 			rf->doneInitialLoad = true;
 		}		
 	}
@@ -355,9 +390,9 @@ int rf_dektec_open(hacktv_t *s, const char *device, unsigned int frequency_hz, u
 		return(HACKTV_ERROR);
 	}
 
-	rf->initialLoadTarget = (FifoSize * 3) / 4;
+	rf->initialLoadTarget = (FifoSize / 4) * 3;
 
-	fprintf(stderr, "DEKTEC: FIFO size %d -- aiming for an initial load of %d\n", FifoSize, rf->initialLoadTarget);
+	fprintf(stderr, "DEKTEC: FIFO size %d bytes -- aiming for an initial load of %d bytes\n", FifoSize, rf->initialLoadTarget);
 
 	// Set transmit mode to raw and unstuffed
 	dr = rf->dtOutp.SetTxMode(DTAPI_TXMODE_RAW, DTAPI_TXSTUFF_MODE_OFF);
@@ -381,7 +416,8 @@ int rf_dektec_open(hacktv_t *s, const char *device, unsigned int frequency_hz, u
 	// Set IQ direct mode
 	dr = rf->dtOutp.SetModControl(
 				DTAPI_MOD_IQDIRECT,			// Modulation mode: direct I-Q
-				DTAPI_MOD_INTERPOL_RAW,		// Interpolation filter -- DTAPI_MOD_INTERPOL_RAW, DTAPI_MOD_INTERPOL_OFDM or DTAPI_MOD_INTERPOL_QAM
+				DTAPI_MOD_INTERPOL_QAM,		// Interpolation filter -- DTAPI_MOD_INTERPOL_RAW, DTAPI_MOD_INTERPOL_OFDM or DTAPI_MOD_INTERPOL_QAM.
+											// OFDM and RAW don't seem to work for PAL (no audio). QAM is fine.
 				s->samplerate,				// Sample rate
 				DTAPI_MOD_ROLLOFF_NONE);
 	if (dr != DTAPI_OK)
@@ -400,6 +436,7 @@ int rf_dektec_open(hacktv_t *s, const char *device, unsigned int frequency_hz, u
 			fprintf(stderr, "DEKTEC: Failed to set output level %d: %s\n", gain, DtapiResult2Str(dr));
 			return(HACKTV_ERROR);
 		}
+		fprintf(stderr, "DEKTEC: Output level %d dB\n", gain);
     }
 	else
 	{
