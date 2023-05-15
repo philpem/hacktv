@@ -3777,6 +3777,211 @@ vbidata_lut_t *_render_sync_pulses(vid_t *s, const double syncs[][4], int num)
 	return(lut);
 }
 
+int vid_render_jerrold(vid_t *s, void *arg, int nlines, vid_line_t **lines)
+{
+	vid_line_t *l = lines[0];
+	int vline;
+	int field;
+	int last_line_in_field;
+
+	// Calculate the line (in this field)
+	switch (s->conf.type) {
+		case VID_RASTER_625:
+			// 625-line / System-I (PAL)
+			field = (l->line <= 312) ? 0 : 1;
+			vline = field == 0 ? l->line : l->line - 312;
+			last_line_in_field = (l->line == 312) || (l->line == 625);
+			break;
+
+		case VID_RASTER_525:
+			// 525-line / System-M (NTSC)
+			field = (l->line <= 262) ? 0 : 1;
+			vline = field == 0 ? l->line : l->line - 262;
+			last_line_in_field = (l->line == 262) || (l->line == 525);
+			break;
+
+		default:
+			return(1);
+	}
+
+
+	/* Get colour subcarrier -- FIXME, this may need to be fixed at 3.579545 MHz NTSC subcarrier */
+	int16_t *lut_i;
+	_get_colour_subcarrier(s, l->frame, l->line, NULL, &lut_i, NULL);
+
+
+	/* TODO: Video scrambling occurs between lines 24 and 262 (inclusive) on both fields -- NTSC */
+
+	if (vline == 11)
+	{
+		/* TODO: Line 11 on both fields contains a 120IRE colour burst in place of the regular colour burst */
+		return(1);
+	}
+	else if ((vline == 13) || (last_line_in_field))
+	{
+		/* TODO: The last scrambled line of each field contains an End Of Field Burst.
+		 * Line 13 also contains the same format of burst.
+		 */
+		return(1);
+	}
+	else if (vline == 18)
+	{
+		/*
+		 * Line 18 (on both fields) carries the VBI data stream.
+		 *
+		 * The colour burst is replaced with approx. 9 cycles of 120 IRE colour burst.
+		 * The average video level during the line is around 60 IRE.
+		 *
+		 * There are 24 data bits per line:
+		 *   Data bits start at 3.88us from the rising edge of the sync tip (8.6us from the falling edge).
+		 *   Each data bit is 8 cycles of colour burst wide.
+		 *   A '1' bit is signalled by the presence of the 120 IRE burst.
+		 *   A '0' bit is signalled by average video level (approx. 60 IRE)
+		 *
+		 * Data format is:
+		 *   SSSS CCCC PPPPPPPPPPPPPPPP
+		 *
+		 * SSSS: 4-bit sequence ID, least-significant bit first
+		 * CCCC: 4-bit additive checksum of all nibbles in the block, least-significant bit first
+		 * PPPP: Payload data, least-significant bit first
+		 *
+		 */
+
+		/* Packet data */
+		uint8_t seq;
+		uint8_t check;
+		uint16_t payload;
+
+/* Scrambling parameters */
+#define audio_privacy 0
+#define video_invert 0
+#define atten_6db 0
+#define atten_10db 0
+/* Service tag number */
+#define service_code (209)
+
+		/* Sequence code -- this counts from 15 down to 0 then loops around */
+		seq = 15 - (((l->frame % 8) * 2) + field);
+
+		/* Fill in the payload */
+		switch (seq) {
+			case 4:
+				/* Seq 4: Service code (minus one), in the most-significant byte. Rest zero. */
+				payload = (service_code - 1) * 256;
+				break;
+
+			case 2:
+			case 1:
+				/* Seq 2 and 1: Scrambling mode */
+				payload = 
+					(audio_privacy ? 1 : 0) |
+					(video_invert  ? 4 : 0) |
+					(atten_6db     ? 0 : 8) |
+					(atten_10db    ? 0 : 16);
+				break;
+
+			default:
+				payload = 0;
+				break;
+		}
+
+		/* Calculate checksum */
+		check = seq +
+			(payload         & 0x0F) +
+			((payload >>  4) & 0x0F) +
+			((payload >>  8) & 0x0F) +
+			((payload >> 12) & 0x0F);
+		check = 15 - (check & 0x0F);
+
+		/* Build the complete packet */
+		uint32_t code =
+			seq |
+			(check << 4) |
+			(payload << 8);
+
+#if 0
+		/**
+		 * Debug code: print out the VBI payload in various formats.
+		 *
+		 * A typical carousel (service code 209, clear/no scrambling) looks like:
+		 *   JERROLD: Seq F Payld 0000 Chk 0 ====>==> 00000F // F00000  // bits: 111100000000000000000000
+		 *   JERROLD: Seq E Payld 0000 Chk 1 ====>==> 00001E // 780000  // bits: 011110000000000000000000
+		 *   JERROLD: Seq D Payld 0000 Chk 2 ====>==> 00002D // B40000  // bits: 101101000000000000000000
+		 *   JERROLD: Seq C Payld 0000 Chk 3 ====>==> 00003C // 3C0000  // bits: 001111000000000000000000
+		 *   JERROLD: Seq B Payld 0000 Chk 4 ====>==> 00004B // D20000  // bits: 110100100000000000000000
+		 *   JERROLD: Seq A Payld 0000 Chk 5 ====>==> 00005A // 5A0000  // bits: 010110100000000000000000
+		 *   JERROLD: Seq 9 Payld 0000 Chk 6 ====>==> 000069 // 960000  // bits: 100101100000000000000000
+		 *   JERROLD: Seq 8 Payld 0000 Chk 7 ====>==> 000078 // 1E0000  // bits: 000111100000000000000000
+		 *   JERROLD: Seq 7 Payld 0000 Chk 8 ====>==> 000087 // E10000  // bits: 111000010000000000000000
+		 *   JERROLD: Seq 6 Payld 0000 Chk 9 ====>==> 000096 // 690000  // bits: 011010010000000000000000
+		 *   JERROLD: Seq 5 Payld 0000 Chk A ====>==> 0000A5 // A50000  // bits: 101001010000000000000000
+		 *   JERROLD: Seq 4 Payld D000 Chk E ====>==> D000E4 // 27000B  // bits: 001001110000000000001011
+		 *   JERROLD: Seq 3 Payld 0000 Chk C ====>==> 0000C3 // C30000  // bits: 110000110000000000000000
+		 *   JERROLD: Seq 2 Payld 0018 Chk 4 ====>==> 001842 // 421800  // bits: 010000100001100000000000
+		 *   JERROLD: Seq 1 Payld 0018 Chk 5 ====>==> 001851 // 8A1800  // bits: 100010100001100000000000
+		 *   JERROLD: Seq 0 Payld 0000 Chk F ====>==> 0000F0 // 0F0000  // bits: 000011110000000000000000
+		 *   JERROLD: Seq F Payld 0000 Chk 0 ====>==> 00000F // F00000  // bits: 111100000000000000000000
+		 *              (seq)    (payld)  (chk)       (HexA)    (HexB)           (bits)
+		 *
+		 * The fields mean:
+		 *   Seq:    Sequence number. Starts at 15 (0xF) and counts down, then loops.
+		 *   Payld:  Payload data. Zero for unused sequence blocks.
+		 *   Chk:    Checksum. The sum of Seq, Chk and all the Payload nibbles should be 15 (0xF).
+		 *   HexA:   Hexadecimal form of the 24-bit stream, in normal (readable) form. Payload (4 nibbles), Checksum, Sequence.
+		 *   HexB:   Hexadecimal form of the 24-bit stream, bit reversed to match the Line18 decoder output.
+		 *   Bits:   Bits in the order they are transmitted (left to right).
+		 *
+		 * This is really only useful for debugging the packet builder and checksum code.
+		 */
+		uint32_t rcode = 0;
+		for (int z=0; z<24; z++) {
+			rcode = (rcode << 1) + ((code & (1 << z)) ? 1 : 0);
+		}
+
+		fprintf(stderr, "JERROLD: Seq %X Payld %04X Chk %X ====>==> %06X // %06X  // bits: ", seq, payload, check, code, rcode);
+		for (int z=0; z<24; z++) {
+			fprintf(stderr, "%d", (code & (1 << z)) ? 1 : 0);
+		}
+		fprintf(stderr, "\n");
+#endif
+
+		if(lut_i)
+		{
+			/* Offset from sync of first bit (in seconds) */
+			double bo = s->conf.active_left;
+			
+			/* Bit width (8x cycles of colour subcarrier) */
+			double bw = 1.0 / s->conf.colour_carrier * 8;
+			
+			/* Amplitude */
+			int16_t ba = (s->white_level - s->blanking_level) * 0.5;
+			
+			/* Base level */
+			int16_t bb = (s->white_level - s->blanking_level) * 0.5;
+			
+			/* Bit and pixel counters */
+			int b, x;
+			
+			for(x = s->active_left; x < s->active_left + s->active_width; x++)
+			{
+				b = floor(((double) x / s->pixel_rate - bo) / bw);
+				
+				l->output[x * 2] += bb;
+				
+				if(b >= 0 && b < 24 && code & (1 << (23 - b)))
+				{
+					l->output[x * 2] += (lut_i[x] * ba) >> 15;
+				}
+			}
+			
+			/* Mark the line as occupied */
+			l->vbialloc = 1;
+		}
+	}
+
+	return(1);
+}
+
 int vid_init(vid_t *s, unsigned int sample_rate, unsigned int pixel_rate, const vid_config_t * const conf)
 {
 	int r, x;
@@ -4224,6 +4429,12 @@ int vid_init(vid_t *s, unsigned int sample_rate, unsigned int pixel_rate, const 
 		{
 			_add_lineprocess(s, "teletext", 1, &s->tt, tt_render_line, NULL);
 		}
+	}
+	
+	/* Test GI/Jerrold (NTSC/PAL) VBI code inserter */
+	if(s->conf.type == VID_RASTER_525 || s->conf.type == VID_RASTER_625)
+	{
+		_add_lineprocess(s, "gi-jerrold-bb", 1, NULL, vid_render_jerrold, NULL);
 	}
 	
 	if(s->pixel_rate != s->sample_rate)
