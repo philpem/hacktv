@@ -3968,7 +3968,7 @@ int vid_render_jerrold(vid_t *s, void *arg, int nlines, vid_line_t **lines)
 				
 				l->output[x * 2] += bb;
 				
-				if(b >= 0 && b < 24 && code & (1 << (23 - b)))
+				if(b >= 0 && b < 24 && code & (1 << b))
 				{
 					l->output[x * 2] += (lut_i[x] * ba) >> 15;
 				}
