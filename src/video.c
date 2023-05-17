@@ -3777,6 +3777,9 @@ vbidata_lut_t *_render_sync_pulses(vid_t *s, const double syncs[][4], int num)
 	return(lut);
 }
 
+/**
+ * Jerrold Baseband VBI renderer
+ */
 int vid_render_jerrold(vid_t *s, void *arg, int nlines, vid_line_t **lines)
 {
 	vid_line_t *l = lines[0];
@@ -3784,7 +3787,40 @@ int vid_render_jerrold(vid_t *s, void *arg, int nlines, vid_line_t **lines)
 	int field;
 	int last_line_in_field;
 
-	// Calculate the line (in this field)
+	/* Parameters for a '1' bit:
+	 *   Frequency  - in Hertz
+	 *   Amplitude  - from centre (zero point) to either peak
+	 *   Base level - the centre point of the sine wave
+	 *
+	 * These should be 3.579545 MHz, and the wave should be 120 IRE, centred.
+	 */
+	const double JVBI_CARRIER_FREQ = (5000000.0 * 63 / 88);
+	const int16_t JVBI_BIT1_AMPL = (s->white_level - s->sync_level) * 0.5;
+	const int16_t JVBI_BIT1_BASE = s->sync_level + JVBI_BIT1_AMPL;
+	
+	/* Parameters for a '0' bit:
+	 *   Base level (offset) - should be roughly 50 IRE, i.e. mid-grey
+	 */
+	const int16_t JVBI_BIT0_BASE = s->blanking_level + ((s->white_level - s->blanking_level) * 0.5);
+
+	/* Offset from sync of first bit (in seconds) */
+	const double JVBI_LINE18_BITS_START = 8.6e-6; //s->conf.active_left;
+	
+	/* Bit width (8x cycles of colour subcarrier) */
+	const double JVBI_LINE18_BIT_WIDTH = 1.0 / JVBI_CARRIER_FREQ * 8;
+
+
+/* Scrambling parameters */
+#define audio_privacy 0
+#define video_invert 0
+#define atten_6db 0
+#define atten_10db 0
+/* Service tag number */
+#define service_code (209)
+
+
+
+	// Calculate the line number (in this field)
 	switch (s->conf.type) {
 		case VID_RASTER_625:
 			// 625-line / System-I (PAL)
@@ -3801,27 +3837,89 @@ int vid_render_jerrold(vid_t *s, void *arg, int nlines, vid_line_t **lines)
 			break;
 
 		default:
+			// Unknown. TODO, raise an error or something
 			return(1);
 	}
 
 
-	/* Get colour subcarrier -- FIXME, this may need to be fixed at 3.579545 MHz NTSC subcarrier */
-	int16_t *lut_i;
-	_get_colour_subcarrier(s, l->frame, l->line, NULL, &lut_i, NULL);
+	/* Calculate LUT which is used while sending '1' bits */
+	static int16_t *lut_i;
 
+	/* FIXME? Might be better to do this initialisation in vid_init() */
+	if (lut_i == NULL)
+	{
+		int lut_width = s->width;
+
+		double d = 2.0 * M_PI * JVBI_CARRIER_FREQ / s->pixel_rate;
+
+		lut_i = malloc(lut_width * sizeof(int16_t));
+		if (!lut_i)
+		{
+			return(VID_OUT_OF_MEMORY);
+		}
+
+		for(int64_t c = 0; c < lut_width; c++)
+		{
+			lut_i[c] = round(-sin(d * c) * INT16_MAX);
+		}
+	}
 
 	/* TODO: Video scrambling occurs between lines 24 and 262 (inclusive) on both fields -- NTSC */
 
 	if (vline == 11)
 	{
-		/* TODO: Line 11 on both fields contains a 120IRE colour burst in place of the regular colour burst */
+		/* Line 11 on both fields contains a 120IRE colour burst in place of the regular colour burst */
+
+		for(int x = s->burst_left; x < s->burst_left + s->burst_width; x++)
+		{
+			l->output[x * 2] = JVBI_BIT1_BASE + ((lut_i[x] * JVBI_BIT1_AMPL) >> 15);
+		}
+
+#if 1
+		// DEBUG: Save a sample of data to a temp file
+		if (1) {
+			// only do this once
+			static int x;
+			if (!x) {
+				x=1;
+				FILE *fp = fopen("/tmp/hacktv-debug-i16-line11", "wb");
+				fwrite(l->output, sizeof(int16_t)*2, s->width, fp);
+				fclose(fp);
+			}
+		}
+#endif
 		return(1);
 	}
 	else if ((vline == 13) || (last_line_in_field))
 	{
-		/* TODO: The last scrambled line of each field contains an End Of Field Burst.
+		/* The last scrambled line of each field contains an End Of Field Burst.
 		 * Line 13 also contains the same format of burst.
+		 *
+		 * The colour burst is normal 40IRE on this line.
 		 */
+
+		/* Calculate width of the EOF burst -- two bits */
+		int b = floor(s->pixel_rate * JVBI_LINE18_BIT_WIDTH * 2.0);
+
+		for(int x = s->active_left + s->active_width - b; x < s->active_left + s->active_width; x++)
+		{
+			l->output[x * 2] = JVBI_BIT1_BASE + ((lut_i[x] * JVBI_BIT1_AMPL) >> 15);
+		}
+
+#if 1
+		// DEBUG: Save a sample of data to a temp file
+		if (1) {
+			// only do this once
+			static int x;
+			if (!x) {
+				x=1;
+				FILE *fp = fopen("/tmp/hacktv-debug-i16-line13", "wb");
+				fwrite(l->output, sizeof(int16_t)*2, s->width, fp);
+				fclose(fp);
+			}
+		}
+#endif
+
 		return(1);
 	}
 	else if (vline == 18)
@@ -3847,18 +3945,16 @@ int vid_render_jerrold(vid_t *s, void *arg, int nlines, vid_line_t **lines)
 		 *
 		 */
 
+		/* Start by including the 120IRE colour burst */
+		for(int x = s->burst_left; x < s->burst_left + s->burst_width; x++)
+		{
+			l->output[x * 2] = JVBI_BIT1_BASE + ((lut_i[x] * JVBI_BIT1_AMPL) >> 15);
+		}
+
 		/* Packet data */
 		uint8_t seq;
 		uint8_t check;
 		uint16_t payload;
-
-/* Scrambling parameters */
-#define audio_privacy 0
-#define video_invert 0
-#define atten_6db 0
-#define atten_10db 0
-/* Service tag number */
-#define service_code (209)
 
 		/* Sequence code -- this counts from 15 down to 0 then loops around */
 		seq = 15 - (((l->frame % 8) * 2) + field);
@@ -3945,38 +4041,42 @@ int vid_render_jerrold(vid_t *s, void *arg, int nlines, vid_line_t **lines)
 		fprintf(stderr, "\n");
 #endif
 
-		if(lut_i)
+		/* Bit and pixel counters */
+		int b, x;
+		
+		for(x = 0; x < s->active_left + s->active_width; x++)
 		{
-			/* Offset from sync of first bit (in seconds) */
-			double bo = s->conf.active_left;
+			b = floor((((double)(x) / s->pixel_rate) - JVBI_LINE18_BITS_START) / JVBI_LINE18_BIT_WIDTH);
 			
-			/* Bit width (8x cycles of colour subcarrier) */
-			double bw = 1.0 / s->conf.colour_carrier * 8;
-			
-			/* Amplitude */
-			int16_t ba = (s->white_level - s->blanking_level) * 0.5;
-			
-			/* Base level */
-			int16_t bb = (s->white_level - s->blanking_level) * 0.5;
-			
-			/* Bit and pixel counters */
-			int b, x;
-			
-			for(x = s->active_left; x < s->active_left + s->active_width; x++)
+			if(b >= 0 && b < 24)
 			{
-				b = floor(((double) x / s->pixel_rate - bo) / bw);
-				
-				l->output[x * 2] += bb;
-				
-				if(b >= 0 && b < 24 && code & (1 << b))
+				if (code & (1 << b))
 				{
-					l->output[x * 2] += (lut_i[x] * ba) >> 15;
+					l->output[x * 2] = JVBI_BIT1_BASE + ((lut_i[x] * JVBI_BIT1_AMPL) >> 15);
+				}
+				else
+				{
+					l->output[x * 2] = JVBI_BIT0_BASE;
 				}
 			}
-			
-			/* Mark the line as occupied */
-			l->vbialloc = 1;
 		}
+
+#if 1
+		// DEBUG: Save a sample of data to a temp file
+		if (seq == 1) {
+			// only do this once
+			static int foo;
+			if (!foo) {
+				x=1;
+				FILE *fp = fopen("/tmp/hacktv-debug-i16-line18", "wb");
+				fwrite(l->output, sizeof(int16_t)*2, s->width, fp);
+				fclose(fp);
+			}
+		}
+#endif
+		
+		/* Mark the line as occupied */
+		l->vbialloc = 1;
 	}
 
 	return(1);
